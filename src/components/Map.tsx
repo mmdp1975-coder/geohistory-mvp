@@ -70,7 +70,9 @@ export default function Map() {
   return (
     <div style={{ height: "100%", width: "100%" }}>
       <MapContainer center={[41.9028, 12.4964]} zoom={5} style={{ height: "100%", width: "100%" }}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer
+          url={`https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY}`}
+          attribution='&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'/>
 
         {/* Caricatore che reagisce a bbox e ai filtri from/to */}
         <BboxLoader setEvents={setEvents} />
