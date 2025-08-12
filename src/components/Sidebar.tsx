@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSelection } from "@/store/useSelection";
 import { useFilters } from "@/store/useFilters";
+import AuthBox from "@/components/AuthBox";
 
 export default function Sidebar() {
   const { selected, setSelected } = useSelection();
@@ -30,6 +31,9 @@ export default function Sidebar() {
 
   return (
     <aside className="flex h-full flex-col gap-3 p-4">
+      {/* QUI: box di login */}
+        <AuthBox />
+          
       {/* Filtri */}
       <div className="space-y-2">
         <input
