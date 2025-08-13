@@ -1,40 +1,47 @@
-// src/app/api/events/route.ts
 import { NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
 
-// Mock: qualche evento in Italia
-const ALL_EVENTS = [
-  { id: "roma", title: "Fondazione di Roma (mito)", year: -753, lat: 41.8902, lng: 12.4922 },
-  { id: "firenze", title: "Nascita del Rinascimento fiorentino", year: 1401, lat: 43.7696, lng: 11.2558 },
-  { id: "milano", title: "Editto di Milano", year: 313, lat: 45.4642, lng: 9.1900 },
-  { id: "venezia", title: "Repubblica di Venezia (apogeo)", year: 1500, lat: 45.4408, lng: 12.3155 },
-];
-
-export function GET(req: Request) {
+export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
   // bbox = minLat,minLng,maxLat,maxLng
-  const bbox = searchParams.get("bbox");
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
+  const bboxStr = searchParams.get("bbox");
+  const fromStr = searchParams.get("from");
+  const toStr   = searchParams.get("to");
 
-  let items = [...ALL_EVENTS];
+  const from = fromStr !== null && fromStr !== "" ? Number(fromStr) : null;
+  const to   = toStr   !== null && toStr   !== "" ? Number(toStr)   : null;
 
-  // Filtra per anni, se forniti
-  const fromYear = from ? Number(from) : undefined;
-  const toYear = to ? Number(to) : undefined;
-  if (!Number.isNaN(fromYear) || !Number.isNaN(toYear)) {
-    items = items.filter((e) => {
-      if (fromYear !== undefined && e.year < fromYear) return false;
-      if (toYear !== undefined && e.year > toYear) return false;
-      return true;
-    });
+  // default "mondo intero" se bbox mancante o malformato
+  let min_lat = -90, min_lng = -180, max_lat = 90, max_lng = 180;
+  if (bboxStr) {
+    const parts = bboxStr.split(",").map(Number);
+    if (parts.length === 4 && parts.every((n) => !Number.isNaN(n))) {
+      [min_lat, min_lng, max_lat, max_lng] = parts;
+    }
   }
 
-  // Filtra per bbox, se fornita
-  if (bbox) {
-    const [minLat, minLng, maxLat, maxLng] = bbox.split(",").map(Number);
-    items = items.filter((e) => e.lat >= minLat && e.lat <= maxLat && e.lng >= minLng && e.lng <= maxLng);
+  const { data, error } = await supabase.rpc("events_in_bbox", {
+    min_lat,
+    min_lng,
+    max_lat,
+    max_lng,
+    from_year: from,
+    to_year: to,
+  });
+
+  if (error) {
+    console.error("Supabase RPC error:", error.message);
+    // anche in errore impostiamo cache molto breve per evitare martellamenti
+    const errRes = NextResponse.json({ events: [], error: error.message }, { status: 500 });
+    errRes.headers.set("Cache-Control", "s-maxage=10, stale-while-revalidate=60");
+    return errRes;
   }
 
-  return NextResponse.json({ events: items });
+  // <<< QUI è la parte che ti interessa: ritorno con header di cache >>>
+  const res = NextResponse.json({ events: data ?? [] });
+  res.headers.set("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
+  return res;
+}
+
 }
