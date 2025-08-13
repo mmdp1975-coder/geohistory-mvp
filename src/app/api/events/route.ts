@@ -51,11 +51,12 @@ export async function GET(req: Request) {
   }
 
   // risposta OK con cache edge
-  const res = NextResponse.json({ events: data ?? [] });
-  res.headers.set(
-    "Cache-Control",
-    "s-maxage=60, stale-while-revalidate=300"
-  );
+    const res = NextResponse.json({ events: data ?? [] });
+    // header per il CDN Vercel (usato per la cache a livello edge)
+    res.headers.set("CDN-Cache-Control", "s-maxage=60, stale-while-revalidate=300");
+    // opzionale: prova anche a riscrivere quello standard
+    res.headers.set("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
   return res;
+
 }
 
