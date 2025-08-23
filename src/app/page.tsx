@@ -1,9 +1,8 @@
-// src/app/page.tsx
 "use client";
 
 import dynamic from "next/dynamic";
 
-// Import dinamico del componente mappa SOLO lato client
+// Carico la mappa solo lato client (niente SSR)
 const EventMap = dynamic(() => import("@/components/EventMap"), {
   ssr: false,
   loading: () => (
@@ -11,11 +10,6 @@ const EventMap = dynamic(() => import("@/components/EventMap"), {
   ),
 });
 
-export default function Page() {
-  return (
-    <main className="min-h-screen">
-      <div className="p-4 text-xl font-serif">GeoHistory — MVP</div>
-      <EventMap />
-    </main>
-  );
+export default function MapPage() {
+  return <EventMap />;
 }
