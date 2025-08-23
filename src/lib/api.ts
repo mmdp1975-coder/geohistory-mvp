@@ -1,10 +1,20 @@
-export async function fetchEvents(lang: "it" | "en" = "it") {
-  const base = process.env.NEXT_PUBLIC_API_BASE;
-  const url = `${base}/events?lang=${lang}`;
-  console.log("FETCH URL:", url); // <— deve stampare http://localhost:3001/events?...
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`API /events failed: ${res.status}`);
-  const json = await res.json();
-  return json.items as import("../types").EventItem[];
+import type { EventsResponse } from "./types";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+if (!API_BASE) throw new Error("NEXT_PUBLIC_API_BASE is not set in .env.local");
+
+export type EventQuery = {
+  q?: string; group_event?: string; continent?: string; country?: string;
+  year_from?: string | number; year_to?: string | number;
+  order?: "asc" | "desc"; limit?: number; offset?: number;
+};
+
+export async function fetchEvents(params: EventQuery = {}): Promise<EventsResponse> {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && `${v}`.trim() !== "") { qs.set(k, `${v}`); } });
+  const url = `${API_BASE}/api/events${qs.toString() ? "?" + qs : ""}`;
+  const res = await fetch(url, { method: "GET", cache: "no-store" });
+  if (!res.ok) { const text = await res.text().catch(() => ""); throw new Error(`API ${res.status}: ${text || res.statusText}`); }
+  return (await res.json()) as EventsResponse;
 }
+
 

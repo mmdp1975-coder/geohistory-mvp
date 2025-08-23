@@ -1,18 +1,21 @@
+import 'leaflet/dist/leaflet.css';
+
+// geohistory-mvp/src/app/layout.tsx
 export const metadata = {
-  title: "GeoHistory — MVP",
-  description: "Prototipo con Next.js, Tailwind e React‑Leaflet",
+  title: "GeoHistory",
+  description: "GeoHistory MVP",
 };
 
+// src/app/layout.tsx
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
-        <div className="min-h-screen bg-white">
-          {children}
-        </div>
-      </body>
+      {/* evita mismatch da estensioni come Grammarly */}
+      <body suppressHydrationWarning={true}>{children}</body>
     </html>
   );
 }
+
+
 
 

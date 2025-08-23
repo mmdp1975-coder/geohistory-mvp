@@ -3,77 +3,119 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+
+const markerIcon = new L.Icon({
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  shadowSize: [41, 41],
+});
+
+type GeoPoint = { type: "Point"; coordinates: [number, number] } | null;
 
 type EventItem = {
-  id: number;
+  id: string;
   title: string;
-  date_from: string;
-  coords: { lat: number; lng: number };
-  group: string;
-  location: { continent: string; country: string; name: string };
+  description: string | null;
+  event_year: number | null;
+  group_event: string | null;
+  continent: string | null;
+  country: string | null;
+  location: string | null;
+  wikipedia_url: string | null;
+  image_url: string | null;
+  coordinates: GeoPoint; // GeoJSON [lng, lat]
 };
 
-export default function MapView() {
-  const [items, setItems] = useState<EventItem[]>([]);
-  const [error, setError] = useState<string | null>(null);
+type ApiResponse = {
+  items: EventItem[];
+  limit: number;
+  offset: number;
+};
 
-  // Import di Leaflet SOLO lato client (evita “window is not defined”)
+function toLatLng(geom: GeoPoint): [number, number] | null {
+  if (!geom || geom.type !== "Point") return null;
+  const [lng, lat] = geom.coordinates;
+  if (typeof lat !== "number" || typeof lng !== "number") return null;
+  return [lat, lng];
+}
+
+export default function MapView() {
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
   useEffect(() => {
     (async () => {
-      const L = await import("leaflet");
-      const iconUrl = "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png";
-      const icon2x = "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png";
-      const shadowUrl = "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png";
-      L.Marker.prototype.options.icon = new L.Icon({
-        iconUrl,
-        iconRetinaUrl: icon2x,
-        shadowUrl,
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41],
-      });
+      try {
+        const url = `${process.env.NEXT_PUBLIC_API_BASE}/api/events?limit=500&order=asc`;
+        const res = await fetch(url, { method: "GET", cache: "no-store" });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`API ${res.status}: ${text || res.statusText}`);
+        }
+        const json: ApiResponse = await res.json();
+        setEvents((json.items || []).filter((e) => toLatLng(e.coordinates)));
+      } catch (e: any) {
+        console.error("Error fetching events:", e);
+        setErr(e?.message || "Errore nel caricamento degli eventi");
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
-  // Carica eventi dal backend
-  useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_BASE;
-    const url = `${base}/events?lang=it`;
-    fetch(url, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((j) => setItems(j.items || []))
-      .catch((e) => setError(`/events failed: ${e.message}`));
-  }, []);
-
-  const tiles = `https://api.maptiler.com/maps/streets/{z}/{x}/{y}.png?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY}`;
-
   return (
-    <div style={{ height: "70vh", width: "100%" }}>
-      <MapContainer center={[45.4642, 9.19]} zoom={5} style={{ height: "100%", width: "100%" }}>
+    <div className="w-full">
+      {err ? (
+        <div className="mx-auto max-w-3xl text-red-600 text-sm border border-red-300 rounded p-3 mb-2">
+          Errore: {err}
+        </div>
+      ) : null}
+
+      <MapContainer center={[20, 0]} zoom={2} style={{ height: "75vh", width: "100%" }}>
         <TileLayer
-          url={tiles}
-          attribution='&copy; <a href="https://www.maptiler.com/">MapTiler</a> &copy; OpenStreetMap contributors'
+          url={`https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY}`}
+          attribution='&copy; <a href="https://www.maptiler.com/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
         />
-        {items.map((ev) => (
-          <Marker key={ev.id} position={[ev.coords.lat, ev.coords.lng]}>
-            <Popup>
-              <div className="text-sm">
-                <div className="font-semibold">{ev.title}</div>
-                <div className="opacity-70">{ev.date_from}</div>
-                <div className="opacity-70">
-                  {ev.location.name} · {ev.location.country}
-                </div>
-                <div className="mt-1 text-xs">Gruppo: {ev.group}</div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+
+        {!loading &&
+          events.map((event) => {
+            const latlng = toLatLng(event.coordinates);
+            if (!latlng) return null;
+            return (
+              <Marker key={event.id} position={latlng} icon={markerIcon}>
+                <Popup>
+                  <div className="space-y-1">
+                    <div className="font-bold">{event.title}</div>
+                    {event.event_year !== null && (
+                      <div>
+                        <strong>Year:</strong> {event.event_year}
+                      </div>
+                    )}
+                    <div className="text-sm opacity-80">
+                      {[event.location, event.country, event.continent].filter(Boolean).join(" · ")}
+                    </div>
+                    {event.description && <p className="text-sm mt-1">{event.description}</p>}
+                    {event.wikipedia_url && (
+                      <a href={event.wikipedia_url} target="_blank" rel="noreferrer" className="underline text-sm">
+                        Wikipedia
+                      </a>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
       </MapContainer>
-      {error && <div className="p-2 text-red-600 text-sm">API error: {error}</div>}
     </div>
   );
 }
+
+
 
 
 

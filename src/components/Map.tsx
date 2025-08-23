@@ -1,104 +1,118 @@
-"use client";
+'use client';
 
-import { useEffect, useState, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import { patchLeafletIcons } from "@/lib/leaflet-icons";
-import { useSelection } from "@/store/useSelection";
-import { useFilters } from "@/store/useFilters";
+import { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import type { LatLngExpression } from 'leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
-type ApiEvent = { id: string; title: string; year: number; lat: number; lng: number };
+import { fetchEvents } from '@/lib/api';
 
-function BboxLoader({ setEvents }: { setEvents: (ev: ApiEvent[]) => void }) {
-  const map = useMap();
-  const { from, to } = useFilters();
+// Fix icone Leaflet (altrimenti non si vedono in Next)
+const markerIcon = L.icon({
+  iconUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
 
-  const queryFromTo = useMemo(() => {
-    const p = new URLSearchParams();
-    if (from !== undefined && !Number.isNaN(from)) p.set("from", String(from));
-    if (to !== undefined && !Number.isNaN(to)) p.set("to", String(to));
-    return p.toString(); // "" oppure "from=...&to=..."
-  }, [from, to]);
+// Tipo minimale per i punti che visualizziamo
+type Row = {
+  id: string;
+  event_en: string | null;
+  event_it: string | null;
+  year_from: number | null;
+  location: string | null;
+  country: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export default function Map() {
+  const [items, setItems] = useState<Row[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // centro su Europa
+  const center: LatLngExpression = [48.5, 11];
 
   async function load() {
-    const b = map.getBounds();
-    const sw = b.getSouthWest();
-    const ne = b.getNorthEast();
-    const bbox = `${sw.lat},${sw.lng},${ne.lat},${ne.lng}`;
-    const url = `/api/events?bbox=${bbox}${queryFromTo ? `&${queryFromTo}` : ""}`;
-
-    const res = await fetch(url);
-    const data = await res.json();
-    setEvents(Array.isArray(data.events) ? data.events : []);
+    try {
+      setLoading(true);
+      setErr(null);
+      const res = await fetchEvents({
+        has_coords: true,
+        limit: 500,
+        offset: 0,
+      });
+      const rows = (res.items as any[]).map((ev) => ({
+        id: ev.id,
+        event_en: ev.event_en ?? null,
+        event_it: ev.event_it ?? null,
+        year_from: ev.year_from ?? null,
+        location: ev.location ?? null,
+        country: ev.country ?? null,
+        latitude: ev.latitude ?? null,
+        longitude: ev.longitude ?? null,
+      }));
+      setItems(rows);
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      await new Promise((r) => setTimeout(r, 0)); // lascia inizializzare la mappa
-      if (!cancelled) await load();
-    })();
-
-    const handler = () => load();
-    map.on("moveend", handler);
-    map.on("zoomend", handler);
-
-    return () => {
-      cancelled = true;
-      map.off("moveend", handler);
-      map.off("zoomend", handler);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map]);
-
-  // ricarica quando cambiano i filtri
-  useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryFromTo]);
-
-  return null;
-}
-
-export default function Map() {
-  const { setSelected } = useSelection();
-  const [events, setEvents] = useState<ApiEvent[]>([]);
-
-  useEffect(() => {
-    patchLeafletIcons();
   }, []);
 
   return (
-    <div style={{ height: "100%", width: "100%" }}>
-      <MapContainer center={[41.9028, 12.4964]} zoom={5} style={{ height: "100%", width: "100%" }}>
+    <div style={{ height: '75vh', width: '100%', borderRadius: 8, overflow: 'hidden' }}>
+      {err && <div style={{ color: 'crimson', padding: 8 }}>{err}</div>}
+
+      <MapContainer
+        center={center}
+        zoom={5}
+        style={{ height: '100%', width: '100%' }}
+        scrollWheelZoom
+      >
         <TileLayer
-          url={`https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY}`}
-          attribution='&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'/>
+          attribution='&copy; OpenStreetMap'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
 
-        {/* Caricatore che reagisce a bbox e ai filtri from/to */}
-        <BboxLoader setEvents={setEvents} />
-
-        {events.map((e) => (
-          <Marker
-            key={e.id}
-            position={[e.lat, e.lng]}
-            eventHandlers={{ click: () => setSelected({ title: e.title, year: e.year, lat: e.lat, lng: e.lng }) }}
-          >
-            <Popup>
-              <div className="text-sm">
-                <div className="font-medium">{e.title}</div>
-                <div>Anno: {e.year}</div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        {items
+          .filter((r) => r.latitude != null && r.longitude != null)
+          .map((r) => {
+            const title = r.event_en || r.event_it || r.location || '(senza titolo)';
+            return (
+              <Marker
+                key={r.id}
+                position={[r.latitude as number, r.longitude as number]}
+                icon={markerIcon}
+              >
+                <Popup>
+                  <div style={{ maxWidth: 240 }}>
+                    <b>{title}</b>
+                    {r.year_from ? ` — ${r.year_from}` : ''}
+                    {r.location ? ` — ${r.location}` : ''}
+                    {r.country ? ` (${r.country})` : ''}
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
       </MapContainer>
+
+      {loading && <div style={{ position: 'absolute', top: 8, left: 8 }}>Carico…</div>}
     </div>
   );
 }
-
-
-
-
-
-
-
