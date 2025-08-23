@@ -1,13 +1,8 @@
 // src/app/page.tsx
 "use client";
 
-import EventMap from "@/components/EventMap";
+import MapView from "@/components/MapView";
 
 export default function Page() {
-  return (
-    <main className="w-full h-[100dvh]">
-      <EventMap />
-    </main>
-  );
+  return <MapView />;
 }
-
