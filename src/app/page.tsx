@@ -1,13 +1,18 @@
-// app/page.tsx
-import dynamic from 'next/dynamic';
+// src/app/page.tsx
+import dynamic from "next/dynamic";
 
-// Carico la mappa solo lato client per evitare errori durante lo static render
-const EventsMap = dynamic(() => import('@/components/EventMap'), { ssr: false });
+const EventMap = dynamic(() => import("@/components/EventMap"), {
+  // IMPORTANT: niente SSR per Leaflet/DOM
+  ssr: false,
+  loading: () => (
+    <div className="p-6 text-center text-gray-600">Loading map…</div>
+  ),
+});
 
 export default function Page() {
   return (
-    <main style={{ height: '100vh', width: '100vw' }}>
-      <EventsMap />
+    <main className="w-full h-[100dvh]">
+      <EventMap />
     </main>
   );
 }

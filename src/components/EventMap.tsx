@@ -1,169 +1,171 @@
-'use client';
+// src/components/EventMap.tsx
+"use client";
 
-import React from 'react';
-import Link from 'next/link';
-import { MapContainer, TileLayer, Marker, Popup, LayersControl, useMap, ZoomControl } from 'react-leaflet';
-import type { LatLngExpression } from 'leaflet';
-import L from 'leaflet';
+// Tutto ciò che tocca `window` deve essere dinamico
+import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 
-// Fix icone default (niente pacchetti aggiuntivi)
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+// Import CSS solo lato client
+import "leaflet/dist/leaflet.css";
+
+// Carico i componenti react‑leaflet dinamicamente per evitare SSR
+const MapContainer = dynamic(
+  async () => (await import("react-leaflet")).MapContainer,
+  { ssr: false }
+);
+const TileLayer = dynamic(
+  async () => (await import("react-leaflet")).TileLayer,
+  { ssr: false }
+);
+const Marker = dynamic(
+  async () => (await import("react-leaflet")).Marker,
+  { ssr: false }
+);
+const Popup = dynamic(async () => (await import("react-leaflet")).Popup, {
+  ssr: false,
 });
 
-type EventListItem = {
+// Tipi base (snelli) per quello che usiamo a mappa
+type EventItem = {
   id: string;
-  event_en: string | null;
-  event_it: string | null;
-  year_from: number | null;
-  year_to: number | null;
-  exact_date: string | null;
-  continent: string | null;
-  country: string | null;
-  location: string | null;
-  latitude: number | null;
-  longitude: number | null;
+  title?: string | null;
+  title_it?: string | null;
+  title_en?: string | null;
+  continent?: string | null;
+  country?: string | null;
+  location?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  wikipedia?: string | null;
+  image_url?: string | null;
+  year_from?: number | null;
+  year_to?: number | null;
 };
 
-type ApiResponse = {
-  items: EventListItem[];
+type ApiListResponse = {
+  items: EventItem[];
   total?: number;
+  count?: number;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE?.trim() ||
+  "https://geohistory-backend.onrender.com";
 
-const fetchUrl = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
+const MAPTILER_KEY =
+  process.env.NEXT_PUBLIC_MAPTILER_API_KEY?.trim() || "";
 
-function formatYears(e: EventListItem) {
-  const yf = e.year_from != null ? e.year_from : null;
-  const yt = e.year_to != null ? e.year_to : null;
-  if (yf == null && yt == null) return '';
-  if (yf != null && yt != null && yf !== yt) return `${yf}–${yt}`;
-  return `${yf ?? yt}`;
-}
+export default function EventMap() {
+  const [items, setItems] = useState<EventItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-function FitToMarkers({ points }: { points: LatLngExpression[] }) {
-  const map = useMap();
-  React.useEffect(() => {
-    if (!points.length) return;
-    const bounds = L.latLngBounds(points as any);
-    map.fitBounds(bounds, { padding: [40, 40] });
-    setTimeout(() => map.invalidateSize(), 120);
-  }, [map, points]);
-  return null;
-}
+  // centro Europa di default
+  const center = useMemo<[number, number]>(() => [46.2, 9.2], []);
 
-export default function EventsMap() {
-  const [events, setEvents] = React.useState<EventListItem[] | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  useEffect(() => {
+    let aborted = false;
 
-  React.useEffect(() => {
-    const ac = new AbortController();
-    setLoading(true);
-    setError(null);
+    async function load() {
+      try {
+        setError(null);
+        const url = `${API_BASE}/api/events?lang=it`;
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`API ${res.status}`);
+        const json: ApiListResponse = await res.json();
 
-    const url = fetchUrl(`/api/events?limit=2000`);
-    fetch(url, { signal: ac.signal, cache: 'no-store' })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data: ApiResponse | EventListItem[] = await r.json();
-        const items = Array.isArray(data) ? data : data.items ?? [];
-        setEvents(items.map(it => ({ ...it, id: String(it.id) })));
-      })
-      .catch((e) => {
-        if (e.name !== 'AbortError') setError(`Failed to load events: ${e.message}`);
-      })
-      .finally(() => setLoading(false));
+        // filtro solo i records con coordinate valide
+        const withCoords = (json.items || []).filter(
+          (it) =>
+            typeof it.latitude === "number" &&
+            typeof it.longitude === "number"
+        );
 
-    return () => ac.abort();
+        if (!aborted) setItems(withCoords);
+      } catch (e: any) {
+        if (!aborted) setError(e?.message ?? "Errore caricamento dati");
+      }
+    }
+
+    load();
+    return () => {
+      aborted = true;
+    };
   }, []);
 
-  const points = React.useMemo<LatLngExpression[]>(() => {
-    if (!events) return [];
-    return events
-      .filter(e => typeof e.latitude === 'number' && typeof e.longitude === 'number')
-      .map(e => [e.latitude as number, e.longitude as number]);
-  }, [events]);
+  // Se manca la MapTiler key, non crashiamo: usiamo OSM tile pubbliche
+  const tileUrl = MAPTILER_KEY
+    ? `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`
+    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
-  const center: LatLngExpression = [20, 0];
+  const tileAttribution = MAPTILER_KEY
+    ? '&copy; <a href="https://www.maptiler.com/copyright/" target="_blank" rel="noreferrer">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+    : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors';
 
   return (
-    <div style={{ height: '100%', width: '100%', position: 'relative' }}>
-      {(loading || error) && (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 999, background: 'rgba(255,255,255,0.75)'
-        }}>
-          {loading ? <span>Loading events…</span> : <span style={{ color: 'crimson' }}>{error}</span>}
+    <div className="w-full h-full">
+      {error ? (
+        <div className="p-4 text-red-700 bg-red-50 border border-red-200">
+          Errore lato client: {error}
         </div>
-      )}
+      ) : null}
 
-      <MapContainer
-        center={center}
-        zoom={2}
-        minZoom={2}
-        maxZoom={18}
-        style={{ height: '100%', width: '100%' }}
-        zoomControl={false}
-        worldCopyJump
-        preferCanvas
-      >
-        <ZoomControl position="topright" />
+      {/* il container deve avere height esplicita */}
+      <div className="w-full h-[100dvh]">
+        <MapContainer
+          center={center}
+          zoom={5}
+          scrollWheelZoom
+          style={{ width: "100%", height: "100%" }}
+        >
+          <TileLayer url={tileUrl} attribution={tileAttribution} />
+          {items.map((ev) => {
+            const lat = ev.latitude!;
+            const lon = ev.longitude!;
+            const title =
+              ev.title ??
+              ev.title_it ??
+              ev.title_en ??
+              ev.location ??
+              "Evento";
 
-        <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="OpenStreetMap">
-            <TileLayer
-              attribution='&copy; OpenStreetMap contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-          </LayersControl.BaseLayer>
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
-          <LayersControl.BaseLayer name="Satellite (Esri)">
-            <TileLayer
-              attribution='Tiles &copy; Esri'
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            />
-          </LayersControl.BaseLayer>
-
-          <LayersControl.Overlay name="Labels (Carto)">
-            <TileLayer
-              attribution='&copy; CARTO'
-              url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png"
-            />
-          </LayersControl.Overlay>
-        </LayersControl>
-
-        <FitToMarkers points={points} />
-
-        {events?.map((e) => {
-          if (typeof e.latitude !== 'number' || typeof e.longitude !== 'number') return null;
-
-          const title = e.event_en || e.event_it || 'Untitled event';
-          const when = formatYears(e);
-          const placeBits = [e.location, e.country].filter(Boolean).join(', ');
-
-          return (
-            <Marker key={e.id} position={[e.latitude as number, e.longitude as number]}>
-              <Popup maxWidth={280}>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <strong style={{ fontSize: 14 }}>{title}</strong>
-                  {when && <div><small>Years: {when}</small></div>}
-                  {placeBits && <div><small>Place: {placeBits}</small></div>}
-                  <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                    <Link href={`/events/${e.id}`} style={{ textDecoration: 'underline' }}>
-                      Open detail
-                    </Link>
+            return (
+              <Marker key={ev.id} position={[lat, lon]}>
+                <Popup>
+                  <div className="text-sm leading-snug">
+                    <div className="font-semibold">{title}</div>
+                    {ev.country || ev.location ? (
+                      <div className="opacity-80">
+                        {[ev.location, ev.country].filter(Boolean).join(", ")}
+                      </div>
+                    ) : null}
+                    {ev.year_from || ev.year_to ? (
+                      <div className="opacity-70 mt-1">
+                        {ev.year_from ?? "?"} – {ev.year_to ?? "?"}
+                      </div>
+                    ) : null}
+                    {ev.wikipedia ? (
+                      <div className="mt-1">
+                        <a
+                          href={ev.wikipedia}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline"
+                        >
+                          Wikipedia
+                        </a>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              </Popup>
-            </Marker>
-          );
-        })}
-      </MapContainer>
+                </Popup>
+              </Marker>
+            );
+          })}
+        </MapContainer>
+      </div>
     </div>
   );
 }
+
 
