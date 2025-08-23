@@ -1,20 +1,51 @@
-import type { EventsResponse } from "./types";
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-if (!API_BASE) throw new Error("NEXT_PUBLIC_API_BASE is not set in .env.local");
+// src/lib/api.ts
+const RAW_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
 
-export type EventQuery = {
-  q?: string; group_event?: string; continent?: string; country?: string;
-  year_from?: string | number; year_to?: string | number;
-  order?: "asc" | "desc"; limit?: number; offset?: number;
+// normalizza: niente slash finale
+export const API_BASE = RAW_BASE.replace(/\/+$/, '');
+
+// join sicuro: evita slash doppi e NON raddoppia /api
+const join = (base: string, path: string) => {
+  const cleanBase = base.replace(/\/+$/, '');
+  const cleanPath = path.replace(/^\/+/, '');
+  return `${cleanBase}/${cleanPath}`;
 };
 
-export async function fetchEvents(params: EventQuery = {}): Promise<EventsResponse> {
-  const qs = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && `${v}`.trim() !== "") { qs.set(k, `${v}`); } });
-  const url = `${API_BASE}/api/events${qs.toString() ? "?" + qs : ""}`;
-  const res = await fetch(url, { method: "GET", cache: "no-store" });
-  if (!res.ok) { const text = await res.text().catch(() => ""); throw new Error(`API ${res.status}: ${text || res.statusText}`); }
-  return (await res.json()) as EventsResponse;
+export const buildUrl = (
+  path: string,
+  query?: Record<string, string | number | boolean | null | undefined>
+) => {
+  const url = new URL(join(API_BASE, path));
+  if (query) {
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== null && v !== undefined && v !== '') {
+        url.searchParams.set(k, String(v));
+      }
+    }
+  }
+  return url.toString();
+};
+
+export async function fetchEvents(params: {
+  lang?: string;
+  q?: string;
+  group_event?: string;
+  continent?: string;
+  country?: string;
+  location?: string;
+  year_from?: number | string;
+  year_to?: number | string;
+  has_coords?: boolean | string;
+}) {
+  const url = buildUrl('/api/events', params);
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => res.statusText);
+    throw new Error(`API ${res.status}: ${msg}`);
+  }
+  return res.json();
 }
+
 
 
