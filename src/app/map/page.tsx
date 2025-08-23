@@ -1,9 +1,17 @@
-import type { Metadata } from 'next';
-import EventsMap from './EventsMap';
+// src/app/map/page.tsx
+'use client';
 
-export const metadata: Metadata = {
-  title: 'GeoHistory – Map',
-};
+import dynamic from 'next/dynamic';
+
+// Carica la mappa solo lato client (Leaflet richiede window/document)
+const EventsMap = dynamic(() => import('@/components/EventMap'), {
+  ssr: false,
+  loading: () => (
+    <div style={{ padding: '12px', textAlign: 'center', color: '#555' }}>
+      Loading map…
+    </div>
+  ),
+});
 
 export default function MapPage() {
   return (
@@ -18,4 +26,5 @@ export default function MapPage() {
     </main>
   );
 }
+
 
