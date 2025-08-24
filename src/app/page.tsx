@@ -1,15 +1,10 @@
-// src/app/HomeClient.tsx
-"use client";
+// src/app/page.tsx
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-import dynamic from "next/dynamic";
+import HomeClient from "./HomeClient";
 
-// carica il container “ricco” della home (cambia il path se il tuo si chiama diverso)
-const MapView = dynamic(() => import("@/components/MapView"), {
-  ssr: false,
-  loading: () => <div style={{ padding: 12 }}>Loading…</div>,
-});
-
-export default function HomeClient() {
-  return <MapView />;
+export default function Page() {
+  return <HomeClient />;
 }
 
