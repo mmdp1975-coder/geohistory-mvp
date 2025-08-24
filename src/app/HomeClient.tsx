@@ -3,7 +3,7 @@
 
 import dynamic from "next/dynamic";
 
-// 🔁 Usa il componente completo della 2.8
+// 👇 USA il componente completo della 2.8
 const EventsBrowser = dynamic(
   () => import("@/components/EventsBrowser"),
   { ssr: false, loading: () => <div style={{ padding: 12 }}>Carico…</div> }
@@ -12,4 +12,3 @@ const EventsBrowser = dynamic(
 export default function HomeClient() {
   return <EventsBrowser />;
 }
-
