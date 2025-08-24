@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
 
-// Dynamic import solo client
+// Dynamic import (client only)
 const MapContainer = dynamic(
   () => import('react-leaflet').then(m => m.MapContainer),
   { ssr: false }
@@ -43,16 +43,17 @@ type ApiListResponse = { items: EventItem[]; total?: number; count?: number };
 
 // Config base
 const RAW_BASE = (process.env.NEXT_PUBLIC_API_BASE || '').trim();
-const API_BASE = RAW_BASE.replace(/\/+$/, ''); // rimuovo trailing slash
+const API_BASE = RAW_BASE.replace(/\/+$/, '');
 const MAPTILER_KEY = (process.env.NEXT_PUBLIC_MAPTILER_API_KEY || '').trim();
 
 // Builder URL assoluti verso il backend (niente // o /api/api)
 const abs = (path: string) => `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 
-export default function EventMap() {
+export default function EventMap({ query }: { query?: string }) {
   const [items, setItems] = useState<EventItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // centro Europa
   const center = useMemo<[number, number]>(() => [46.2, 9.2], []);
 
   useEffect(() => {
@@ -61,13 +62,13 @@ export default function EventMap() {
     (async () => {
       try {
         setError(null);
-        const url = abs('/api/events?lang=it');
-        const res = await fetch(url, { cache: 'no-store', signal: ac.signal });
+        const q = query && query.trim().length ? query.trim() : '?lang=it';
+        const res = await fetch(abs('/api/events' + (q.startsWith('?') ? q : `?${q}`)), {
+          cache: 'no-store',
+          signal: ac.signal,
+        });
         if (!res.ok) throw new Error(`API ${res.status}`);
         const json: ApiListResponse = await res.json();
-
-        // log di debug per capire subito cosa arriva
-        console.log('EventMap: fetched items:', json?.items?.length ?? 0);
 
         const withCoords = (json.items || []).filter((it) => {
           const lat = Number(it.latitude);
@@ -78,13 +79,12 @@ export default function EventMap() {
         setItems(withCoords);
       } catch (e: any) {
         if (e?.name === 'AbortError') return;
-        console.error('EventMap load error:', e);
         setError(e?.message ?? 'Errore caricamento dati');
       }
     })();
 
     return () => ac.abort();
-  }, []);
+  }, [query]);
 
   // Tiles
   const tileUrl = MAPTILER_KEY
@@ -97,22 +97,20 @@ export default function EventMap() {
 
   return (
     <div className="w-full h-full relative">
-      {/* pannellino di debug sempre visibile */}
+      {/* pannellino di debug */}
       <div
         className="fixed left-2 top-2 z-[1000] text-xs rounded border bg-white/85 px-2 py-1"
         style={{ pointerEvents: 'none' }}
       >
-        items: {items.length} {error ? `| err: ${error}` : ''}
+        items: {items.length} {error ? `| err: ${error}` : ''} {query ? `| q: ${query}` : ''}
       </div>
 
-      {/* se errore, lo mostro anche in pagina */}
       {error && (
         <div className="p-4 text-red-700 bg-red-50 border border-red-200">
           Errore lato client: {error}
         </div>
       )}
 
-      {/* height “bulldozer” per scongiurare container a 0px */}
       <div className="w-full" style={{ height: '100vh', minHeight: '600px' }}>
         <MapContainer
           center={center}
