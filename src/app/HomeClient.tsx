@@ -3,12 +3,13 @@
 
 import dynamic from "next/dynamic";
 
-// carica il container “ricco” della home (cambia il path se il tuo si chiama diverso)
-const MapView = dynamic(() => import("@/components/MapView"), {
-  ssr: false,
-  loading: () => <div style={{ padding: 12 }}>Loading…</div>,
-});
+// 🔁 Usa il componente completo della 2.8
+const EventsBrowser = dynamic(
+  () => import("@/components/EventsBrowser"),
+  { ssr: false, loading: () => <div style={{ padding: 12 }}>Carico…</div> }
+);
 
 export default function HomeClient() {
-  return <MapView />;
+  return <EventsBrowser />;
 }
+
