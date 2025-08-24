@@ -12,4 +12,3 @@ const MapView = dynamic(() => import("@/components/MapView"), {
 export default function HomeClient() {
   return <MapView />;
 }
-
